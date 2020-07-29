@@ -539,15 +539,23 @@ func (c *Container) CleanUp(ctx context.Context) {
 	}
 	// Forget profiles.
 	c.profiles = nil
+
+	// Make sure cleanup does not hang on Kill or Remove.
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(time.Second))
 	// Kill the container.
-	if err := c.Kill(ctx); err != nil && !strings.Contains(err.Error(), "is not running") {
+	if err := c.Kill(ctx); err != nil && !strings.Contains(err.Error(), "is not running") && !strings.Contains(err.Error(), "context canceled") {
 		// Just log; can't do anything here.
 		c.logger.Logf("error killing container %q: %v", c.Name, err)
 	}
+	cancel()
+
 	// Remove the image.
-	if err := c.Remove(ctx); err != nil {
+	ctx, cancel = context.WithDeadline(ctx, time.Now().Add(time.Second))
+	if err := c.Remove(ctx); err != nil && !strings.Contains(err.Error(), "context canceled") {
 		c.logger.Logf("error removing container %q: %v", c.Name, err)
 	}
+	cancel()
+
 	// Forget all mounts.
 	c.mounts = nil
 	// Execute all cleanups.

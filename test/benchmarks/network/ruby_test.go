@@ -24,28 +24,24 @@ import (
 	"gvisor.dev/gvisor/test/benchmarks/tools"
 )
 
-// BenchmarkNode runs 10K requests using 'hey' against a Node server run on
-// 'runtime'. The server responds to requests by grabbing some data in a
-// redis instance and returns the data in its reponse. The test loops through
-// increasing amounts of concurency for requests.
-func BenchmarkNode(b *testing.B) {
+// BenchmarkRedis runs 10K requests using 'hey' against a Redis server.
+func BenchmarkRuby(b *testing.B) {
 	concurrency := []int{1, 5, 10, 25}
 	for _, c := range concurrency {
 		b.Run(fmt.Sprintf("Concurrency%d", c), func(b *testing.B) {
 			hey := &tools.Hey{
-				Requests:    b.N + c,
+				Requests:    b.N + c, // requests cannot be less than concurrency.
 				Concurrency: c,
 			}
-			runNode(b, hey)
+			runRuby(b, hey)
 		})
 	}
 }
 
-// runNode runs the test for a given # of requests and concurrency.
-func runNode(b *testing.B, hey *tools.Hey) {
+// runRuby runs the test for a given # of requests and concurrency.
+func runRuby(b *testing.B, hey *tools.Hey) {
 	b.Helper()
-
-	// The machine to hold Redis and the Node Server.
+	// The machine to hold Redis and the Ruby Server.
 	serverMachine, err := h.GetMachine()
 	if err != nil {
 		b.Fatal("failed to get machine with: %v", err)
@@ -58,7 +54,6 @@ func runNode(b *testing.B, hey *tools.Hey) {
 		b.Fatal("failed to get machine with: %v", err)
 	}
 	defer clientMachine.CleanUp()
-
 	ctx := context.Background()
 
 	// Spawn a redis instance for the app to use.
@@ -78,41 +73,50 @@ func runNode(b *testing.B, hey *tools.Hey) {
 		b.Fatalf("failed to get IP from redis instance: %v", err)
 	}
 
-	// Node runs on port 8080.
-	port := 8080
+	// Ruby runs on port 9292.
+	port := 9292
 
-	// Start-up the Node server.
-	nodeApp := serverMachine.GetContainer(ctx, b)
-	if err := nodeApp.Spawn(ctx, dockerutil.RunOpts{
-		Image:   "benchmarks/node",
-		WorkDir: "/usr/src/app",
+	// Start-up the Ruby server.
+	rubyApp := serverMachine.GetContainer(ctx, b)
+	if err := rubyApp.Spawn(ctx, dockerutil.RunOpts{
+		Image:   "benchmarks/ruby",
+		WorkDir: "/app",
 		Links:   []string{redis.MakeLink("redis")},
 		Ports:   []int{port},
-	}, "node", "index.js", redisIP.String()); err != nil {
+		Env: []string{
+			fmt.Sprintf("PORT=%d", port),
+			"WEB_CONCURRENCY=20",
+			"WEB_MAX_THREADS=20",
+			"RACK_ENV=production",
+			fmt.Sprintf("HOST=%s", redisIP),
+		},
+		User: "nobody",
+	}, "sh", "-c", "/usr/bin/puma"); err != nil {
 		b.Fatalf("failed to spawn node instance: %v", err)
 	}
-	defer nodeApp.CleanUp(ctx)
+	defer rubyApp.CleanUp(ctx)
 
 	servingIP, err := serverMachine.IPAddress()
 	if err != nil {
 		b.Fatalf("failed to get ip from server: %v", err)
 	}
 
-	servingPort, err := nodeApp.FindPort(ctx, port)
+	servingPort, err := rubyApp.FindPort(ctx, port)
 	if err != nil {
 		b.Fatalf("failed to port from node instance: %v", err)
 	}
 
 	// Wait until the Client sees the server as up.
-	harness.WaitUntilServing(ctx, clientMachine, servingIP, servingPort)
-
+	if err := harness.WaitUntilServing(ctx, clientMachine, servingIP, servingPort); err != nil {
+		b.Fatalf("failed to wait until  serving: %v", err)
+	}
 	heyCmd := hey.MakeCmd(servingIP, servingPort)
-
-	nodeApp.RestartProfiles()
+	rubyApp.RestartProfiles()
 	b.ResetTimer()
 
 	// the client should run on Native.
 	client := clientMachine.GetNativeContainer(ctx, b)
+	defer client.CleanUp(ctx)
 	out, err := client.Run(ctx, dockerutil.RunOpts{
 		Image: "benchmarks/hey",
 	}, heyCmd...)
