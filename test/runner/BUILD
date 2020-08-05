@@ -1,4 +1,4 @@
-load("//tools:defs.bzl", "go_binary")
+load("//tools:defs.bzl", "bzl_library", "go_binary")
 
 package(licenses = ["notice"])
 
@@ -20,4 +20,11 @@ go_binary(
         "@com_github_syndtr_gocapability//capability:go_default_library",
         "@org_golang_x_sys//unix:go_default_library",
     ],
+)
+
+bzl_library(
+    name = "defs_bzl",
+    srcs = ["defs.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
 )

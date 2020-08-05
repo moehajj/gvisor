@@ -1,4 +1,5 @@
-load("defs.bzl", "packetdrill_test")
+load("//tools:defs.bzl", "bzl_library")
+load("//test/packetdrill:defs.bzl", "packetdrill_test")
 
 package(licenses = ["notice"])
 
@@ -35,4 +36,11 @@ packetdrill_test(
 packetdrill_test(
     name = "tcp_defer_accept_timeout_test",
     scripts = ["tcp_defer_accept_timeout.pkt"],
+)
+
+bzl_library(
+    name = "defs_bzl",
+    srcs = ["defs.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
 )

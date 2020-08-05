@@ -1,4 +1,4 @@
-load("//tools:defs.bzl", "go_binary")
+load("//tools:defs.bzl", "bzl_library", "go_binary")
 
 licenses(["notice"])
 
@@ -16,4 +16,11 @@ go_binary(
 config_setting(
     name = "marshal_config_verbose",
     values = {"define": "gomarshal=verbose"},
+)
+
+bzl_library(
+    name = "defs_bzl",
+    srcs = ["defs.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
 )

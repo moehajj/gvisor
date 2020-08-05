@@ -1,3 +1,4 @@
+load("//tools:defs.bzl", "bzl_library")
 load("//test/runtimes:defs.bzl", "runtime_test")
 
 package(licenses = ["notice"])
@@ -36,4 +37,11 @@ runtime_test(
     exclude_file = "exclude_python3.7.3.csv",
     lang = "python",
     shard_count = 5,
+)
+
+bzl_library(
+    name = "defs_bzl",
+    srcs = ["defs.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
 )
